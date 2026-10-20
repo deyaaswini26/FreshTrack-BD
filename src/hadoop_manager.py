@@ -11,6 +11,7 @@ import enum
 import os
 import shutil
 import subprocess
+import sys
 import time
 from typing import Any, Dict, Optional
 
@@ -167,51 +168,38 @@ class PipelineExecutionManager:
         """
         start_time_dt = datetime.datetime.now(datetime.timezone.utc)
 
-        # Read lines in input
         with open(input_csv, "r", encoding="utf-8") as f:
-            total_input_lines = sum(1 for _ in f)
+            input_text = f.read()
+            total_input_lines = len(input_text.splitlines())
 
-        # 1. Run Mapper independently or in tee to capture sample
-        p_cat = subprocess.Popen(["cat", input_csv], stdout=subprocess.PIPE)
-        p_map = subprocess.Popen(
-            ["python3", self.mapper_path],
-            stdin=p_cat.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        p_cat.stdout.close()
-
-        # Capture mapper output in memory for streaming & inspection
-        map_out, map_err = p_map.communicate()
-        p_cat.wait()
-        p_map.wait()
-
-        map_lines = map_out.decode("utf-8").splitlines()
-        valid_records = len(map_lines)
-        # Header line is 1, so rejected is input - 1 - valid
-        rejected_records = max(0, total_input_lines - 1 - valid_records)
-
-        # 2. Sort the mapper output
-        p_sort = subprocess.Popen(
-            ["sort", "-k1,1"],
+        mapper_proc = subprocess.Popen(
+            [sys.executable, self.mapper_path],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        sort_out, sort_err = p_sort.communicate(input=map_out)
-        p_sort.wait()
-        sort_lines = sort_out.decode("utf-8").splitlines()
+        map_out, map_err = mapper_proc.communicate(input=input_text.encode("utf-8"))
+        mapper_proc.wait()
 
-        # 3. Feed sorted stream to reducer
+        map_lines = map_out.decode("utf-8").splitlines()
+        valid_records = len(map_lines)
+        rejected_records = max(0, total_input_lines - 1 - valid_records)
+
+        sorted_lines = sorted(map_lines, key=lambda line: line.split("\t", 1)[0])
+        sort_out = "\n".join(sorted_lines)
+        if sorted_lines:
+            sort_out += "\n"
+        sort_lines = sorted_lines
+
         with open(output_csv, "w", encoding="utf-8") as out_file:
-            p_red = subprocess.Popen(
-                ["python3", self.reducer_path],
+            reducer_proc = subprocess.Popen(
+                [sys.executable, self.reducer_path],
                 stdin=subprocess.PIPE,
                 stdout=out_file,
                 stderr=subprocess.PIPE,
             )
-            _, red_err = p_red.communicate(input=sort_out)
-            p_red.wait()
+            _, red_err = reducer_proc.communicate(input=sort_out.encode("utf-8"))
+            reducer_proc.wait()
 
         if p_red.returncode != 0:
             raise RuntimeError(f"Reducer failed with exit code {p_red.returncode}: {red_err.decode('utf-8')}")

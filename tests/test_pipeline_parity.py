@@ -129,36 +129,45 @@ def calculate_pandas_reference(raw_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def run_streaming_pipeline(input_csv_path: str) -> pd.DataFrame:
-    """Executes mapper.py and reducer.py through a local pipe and returns output DataFrame."""
+    """Executes mapper.py and reducer.py through a Python-native equivalent of a local pipe."""
     workspace = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     mapper = os.path.join(workspace, "hadoop", "mapper.py")
     reducer = os.path.join(workspace, "hadoop", "reducer.py")
 
-    p_cat = subprocess.Popen(["cat", input_csv_path], stdout=subprocess.PIPE)
-    p_map = subprocess.Popen(["python3", mapper], stdin=p_cat.stdout, stdout=subprocess.PIPE)
-    p_cat.stdout.close()
+    with open(input_csv_path, "r", encoding="utf-8") as csv_file:
+        input_text = csv_file.read()
 
-    p_sort = subprocess.Popen(["sort", "-k1,1"], stdin=p_map.stdout, stdout=subprocess.PIPE)
-    p_map.stdout.close()
-
-    p_red = subprocess.Popen(
-        ["python3", reducer],
-        stdin=p_sort.stdout,
+    p_map = subprocess.Popen(
+        [sys.executable, mapper],
+        stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
-    p_sort.stdout.close()
+    map_stdout, map_stderr = p_map.communicate(input=input_text.encode("utf-8"))
+    if p_map.returncode != 0:
+        raise RuntimeError(f"Mapper failed ({p_map.returncode}): {map_stderr.decode('utf-8')}")
 
-    stdout, stderr = p_red.communicate()
-    p_cat.wait()
-    p_map.wait()
-    p_sort.wait()
-    if p_red.returncode != 0:
-        raise RuntimeError(f"Reducer failed ({p_red.returncode}): {stderr.decode('utf-8')}")
+    mapper_lines = map_stdout.decode("utf-8").splitlines()
+    sorted_lines = sorted(mapper_lines, key=lambda line: line.split("\t", 1)[0])
+    sorted_text = "\n".join(sorted_lines)
+    if sorted_lines:
+        sorted_text += "\n"
 
     with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tmp:
-        tmp.write(stdout.decode("utf-8"))
         tmp_name = tmp.name
+
+    p_red = subprocess.Popen(
+        [sys.executable, reducer],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    reducer_stdout, reducer_stderr = p_red.communicate(input=sorted_text.encode("utf-8"))
+    if p_red.returncode != 0:
+        raise RuntimeError(f"Reducer failed ({p_red.returncode}): {reducer_stderr.decode('utf-8')}")
+
+    with open(tmp_name, "w", encoding="utf-8") as tmp_file:
+        tmp_file.write(reducer_stdout.decode("utf-8"))
 
     df = pd.read_csv(tmp_name)
     os.remove(tmp_name)
