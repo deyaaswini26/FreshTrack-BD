@@ -310,6 +310,92 @@ class TestPipelineParity(unittest.TestCase):
                 err_msg=f"Floating point mismatch in column {num_col}"
             )
 
+    def test_malformed_records_and_missing_values_filtered(self):
+        """Verifies mapper gracefully skips rows with missing columns, invalid floats, or blank IDs."""
+        data = [
+            ["REC-1", "2026-10-20T08:00:00Z", "DEL-ERR-01", "VAN-1", "RT-1", "WH-1", "Dairy", 2.0, 4.0, 3.0, 30.0, 0, 90, "IN_TRANSIT"],
+            # Corrupted row: only 5 columns
+            ["REC-CORRUPT", "2026-10-20T08:02:00Z", "DEL-ERR-01", "VAN-1", "RT-1"],
+            # Corrupted row: invalid non-numeric float
+            ["REC-BADFLOAT", "2026-10-20T08:03:00Z", "DEL-ERR-01", "VAN-1", "RT-1", "WH-1", "Dairy", "NOT_A_NUM", 4.0, 3.0, 30.0, 0, 90, "IN_TRANSIT"],
+            # Valid second reading
+            ["REC-2", "2026-10-20T08:05:00Z", "DEL-ERR-01", "VAN-1", "RT-1", "WH-1", "Dairy", 2.0, 4.0, 3.2, 30.0, 0, 90, "IN_TRANSIT"],
+        ]
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tmp:
+            for row in data:
+                tmp.write(",".join(str(c) for c in row) + "\n")
+            tmp_path = tmp.name
+
+        try:
+            pipe_df = run_streaming_pipeline(tmp_path)
+            self.assertEqual(len(pipe_df), 1)
+            # Only the 2 valid records should be ingested
+            self.assertEqual(pipe_df.iloc[0]["total_readings"], 2)
+            self.assertEqual(pipe_df.iloc[0]["valid_readings"], 2)
+        finally:
+            os.remove(tmp_path)
+
+    def test_out_of_order_timestamps_sorted_chronologically(self):
+        """Verifies reducer sorts records chronologically even if received out-of-order from shuffle."""
+        # Provide timestamps in reverse order: 08:10 -> 08:00 -> 08:05
+        data = [
+            ["REC-3", "2026-10-20T08:10:00Z", "DEL-OOO-01", "VAN-1", "RT-1", "WH-1", "Dairy", 2.0, 4.0, 3.0, 30.0, 0, 90, "IN_TRANSIT"],
+            ["REC-1", "2026-10-20T08:00:00Z", "DEL-OOO-01", "VAN-1", "RT-1", "WH-1", "Dairy", 2.0, 4.0, 3.0, 30.0, 0, 90, "IN_TRANSIT"],
+            ["REC-2", "2026-10-20T08:05:00Z", "DEL-OOO-01", "VAN-1", "RT-1", "WH-1", "Dairy", 2.0, 4.0, 6.0, 30.0, 0, 90, "IN_TRANSIT"],  # Breach (6 > 4) for 5 min
+        ]
+        columns = [
+            "record_id", "timestamp", "delivery_id", "vehicle_id", "route_id", "warehouse_id",
+            "product_category", "target_temp_min", "target_temp_max", "container_temp",
+            "ambient_temp", "door_open_flag", "battery_level", "transit_status"
+        ]
+        df = pd.DataFrame(data, columns=columns)
+
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tmp:
+            df.to_csv(tmp.name, index=False)
+            tmp_path = tmp.name
+
+        try:
+            pipe_df = run_streaming_pipeline(tmp_path)
+            self.assertEqual(len(pipe_df), 1)
+            row = pipe_df.iloc[0]
+            # When sorted: 08:00 (3C) -> 08:05 (6C, breach: 5 min, degree_hours: (6-4)*(5/60)=0.1667) -> 08:10 (3C, normal)
+            self.assertEqual(row["valid_readings"], 3)
+            self.assertEqual(row["breach_reading_count"], 1)
+            self.assertAlmostEqual(row["observed_breach_duration_min"], 5.0, places=1)
+            self.assertAlmostEqual(row["degree_hours_excursion"], 0.1667, places=3)
+        finally:
+            os.remove(tmp_path)
+
+    def test_sub_zero_freeze_chill_injury_degree_hours(self):
+        """Verifies degree-hours accumulates correctly for sub-target chill injury (temp < target_temp_min)."""
+        # Safe band: 2.0 to 4.0. Temp is -1.0 C (under by 3.0 C)
+        data = [
+            ["REC-1", "2026-10-20T08:00:00Z", "DEL-FREEZE-01", "VAN-1", "RT-1", "WH-1", "Dairy", 2.0, 4.0, 3.0, 30.0, 0, 90, "IN_TRANSIT"],
+            ["REC-2", "2026-10-20T08:10:00Z", "DEL-FREEZE-01", "VAN-1", "RT-1", "WH-1", "Dairy", 2.0, 4.0, -1.0, 30.0, 0, 90, "IN_TRANSIT"],  # Breach under: delta = 10 min, diff = 3.0 C
+        ]
+        columns = [
+            "record_id", "timestamp", "delivery_id", "vehicle_id", "route_id", "warehouse_id",
+            "product_category", "target_temp_min", "target_temp_max", "container_temp",
+            "ambient_temp", "door_open_flag", "battery_level", "transit_status"
+        ]
+        df = pd.DataFrame(data, columns=columns)
+
+        with tempfile.NamedTemporaryFile("w+", suffix=".csv", delete=False) as tmp:
+            df.to_csv(tmp.name, index=False)
+            tmp_path = tmp.name
+
+        try:
+            pipe_df = run_streaming_pipeline(tmp_path)
+            self.assertEqual(len(pipe_df), 1)
+            row = pipe_df.iloc[0]
+            # delta = 10 min. (2.0 - (-1.0)) * (10 / 60) = 3.0 * 0.16667 = 0.5000 °C·h
+            self.assertEqual(row["breach_reading_count"], 1)
+            self.assertAlmostEqual(row["observed_breach_duration_min"], 10.0, places=1)
+            self.assertAlmostEqual(row["degree_hours_excursion"], 0.5000, places=3)
+            self.assertEqual(row["min_temp"], -1.0)
+        finally:
+            os.remove(tmp_path)
+
 
 if __name__ == "__main__":
     unittest.main()

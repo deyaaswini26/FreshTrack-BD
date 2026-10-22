@@ -41,6 +41,16 @@ class TestAnalyticsEngine(unittest.TestCase):
         """Empty input should return None gracefully."""
         self.assertIsNone(calculate_mkt([]))
 
+    def test_mkt_nan_filtering_and_invalid_kelvin(self):
+        """NaN values should be filtered out; sub-absolute zero values should raise ValueError."""
+        temps_with_nan = [4.0, float("nan"), 4.0, float("nan"), 4.0]
+        mkt = calculate_mkt(temps_with_nan)
+        self.assertAlmostEqual(mkt, 4.0, places=2)
+
+        # Temperatures <= -273.15 C violate laws of physics (0 Kelvin)
+        with self.assertRaises(ValueError):
+            calculate_mkt([-300.0, 4.0])
+
     def test_risk_score_low_for_compliant_consignments(self):
         """A delivery with 0 breach minutes and 100% integrity must be classified LOW."""
         result = calculate_risk_score(

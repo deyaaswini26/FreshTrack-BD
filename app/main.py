@@ -600,7 +600,7 @@ def main():
         with c2:
             t_min = ship_raw["target_temp_min"].iloc[0]
             t_max = ship_raw["target_temp_max"].iloc[0]
-            st.metric("Safe Band", f"{t_min}°C to {t_max}°C", f"Facility: {ship_meta['warehouse_id']}")
+            st.metric("Safe Band", f"{t_min} – {t_max} °C", f"Facility: {ship_meta['warehouse_id']}")
         with c3:
             excursion_rate = round((ship_meta["breach_reading_count"] / ship_meta["valid_readings"]) * 100.0, 1)
             st.metric("Observed Breach Duration", f"{ship_meta['observed_breach_duration_min']} min", f"{excursion_rate}% readings in breach")

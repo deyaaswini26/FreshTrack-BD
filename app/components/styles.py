@@ -14,17 +14,36 @@ Strict enterprise industrial palette:
 
 INDUSTRIAL_THEME_CSS = """
 <style>
-/* Import Inter Font */
+/* Import Inter Font & Material Symbols */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200');
 
 /* Global Reset & Base Styling */
-html, body, [class*="st-"], .stApp {
+html, body, .stApp {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
     background-color: #0B1220 !important;
     color: #F1F5F9 !important;
 }
 
+/* Preserve Material Icons and Symbols */
+[data-testid="stIconMaterial"],
+span[data-testid="stIconMaterial"],
+[data-testid="stExpanderToggleIcon"],
+[data-testid="stExpanderToggleIcon"] *,
+i.material-icons,
+.material-icons,
+.material-symbols-rounded,
+.material-symbols-outlined,
+button[data-testid*="stSidebarCollapseButton"] span,
+button[data-testid="baseButton-headerNoPadding"] span {
+    font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
+}
+
 /* Sidebar Styling */
+button[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+}
+
 section[data-testid="stSidebar"] {
     background-color: #101A2B !important;
     border-right: 1px solid #2A394D !important;
@@ -276,6 +295,29 @@ div[data-testid="stDataFrame"] {
     border: 1px solid #2A394D !important;
     border-radius: 6px !important;
     overflow: hidden;
+}
+
+/* Native Metrics Styling */
+div[data-testid="stMetric"] {
+    background-color: #151F30 !important;
+    border: 1px solid #2A394D !important;
+    border-radius: 6px !important;
+    padding: 10px 14px !important;
+}
+
+div[data-testid="stMetricLabel"] {
+    font-size: 0.76rem !important;
+    color: #94A3B8 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+}
+
+div[data-testid="stMetricValue"] {
+    font-size: 1.35rem !important;
+    font-weight: 700 !important;
+    color: #F1F5F9 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
 }
 
 /* Tabs */
