@@ -179,7 +179,13 @@ class PipelineExecutionManager:
             stderr=subprocess.PIPE,
         )
         map_out, map_err = mapper_proc.communicate(input=input_text.encode("utf-8"))
-        mapper_proc.wait()
+        # .communicate() already waits; .wait() is redundant but harmless — omitted for clarity
+
+        if mapper_proc.returncode != 0:
+            raise RuntimeError(
+                f"Mapper failed with exit code {mapper_proc.returncode}: "
+                f"{map_err.decode('utf-8').strip()}"
+            )
 
         map_lines = map_out.decode("utf-8").splitlines()
         valid_records = len(map_lines)
@@ -199,10 +205,14 @@ class PipelineExecutionManager:
                 stderr=subprocess.PIPE,
             )
             _, red_err = reducer_proc.communicate(input=sort_out.encode("utf-8"))
-            reducer_proc.wait()
+            # .communicate() already waits; .wait() is redundant — omitted
 
-        if p_red.returncode != 0:
-            raise RuntimeError(f"Reducer failed with exit code {p_red.returncode}: {red_err.decode('utf-8')}")
+        # BUG-01 FIX: was `p_red` (undefined) — correct variable is `reducer_proc`
+        if reducer_proc.returncode != 0:
+            raise RuntimeError(
+                f"Reducer failed with exit code {reducer_proc.returncode}: "
+                f"{red_err.decode('utf-8').strip()}"
+            )
 
         finish_time_dt = datetime.datetime.now(datetime.timezone.utc)
 
