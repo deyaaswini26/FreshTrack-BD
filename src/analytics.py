@@ -14,15 +14,27 @@ proliferation, bacterial colony counts, or actual food spoilage, which require
 direct chemical, biological, and packaging assays.
 """
 
+import datetime
+from enum import Enum
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
-# Physical Constants for Arrhenius MKT Formulation
+# Physical Constants & Operating Rules
 UNIVERSAL_GAS_CONSTANT_R = 8.314472  # J / (mol * K)
 DEFAULT_ACTIVATION_ENERGY = 83144.0  # J / mol (standard USP <1079> recommendation for food/pharma)
 KELVIN_OFFSET = 273.15
+MAX_GAP_MINUTES = 15.0  # Threshold beyond which unobserved outages do NOT infer breach duration
+
+
+class EvidenceQuality(str, Enum):
+    """Categorical states for telemetry evidence quality and temporal coverage."""
+    GOOD = "Good"
+    LIMITED = "Limited"
+    POOR = "Poor"
+    UNKNOWN = "Unknown"
+
 
 SCIENTIFIC_DISCLAIMER = (
     "Operational Thermal Compliance Indicator. FreshTrack BD evaluates physical temperature "
@@ -140,29 +152,383 @@ def calculate_risk_score(
     }
 
 
+def parse_telemetry_timestamp(val: Any) -> Optional[datetime.datetime]:
+    """Parses ISO timestamp strings or datetime objects into a Python datetime object."""
+    if val is None or (isinstance(val, float) and math.isnan(val)):
+        return None
+    if isinstance(val, pd.Timestamp):
+        return val.to_pydatetime()
+    if isinstance(val, datetime.datetime):
+        return val
+    if isinstance(val, str):
+        val_clean = val.strip().rstrip("Z")
+        if not val_clean:
+            return None
+        try:
+            if "." in val_clean:
+                return datetime.datetime.fromisoformat(val_clean)
+            return datetime.datetime.strptime(val_clean, "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            try:
+                dt = pd.to_datetime(val)
+                if pd.isna(dt):
+                    return None
+                return dt.to_pydatetime()
+            except Exception:
+                return None
+    return None
+
+
+def assess_telemetry_quality(
+    timestamps: Union[List[Any], pd.Series, np.ndarray],
+    expected_interval_min: Optional[float] = None,
+    observation_window_min: Optional[float] = None,
+    max_gap_minutes: float = MAX_GAP_MINUTES,
+) -> Dict[str, Any]:
+    """
+    Evaluates telemetry evidence quality and temporal coverage.
+    
+    IMPORTANT RULES:
+    1. Coverage is calculated ONLY when expected_interval_min and observation_window_min
+       are known (> 0). If either is unknown, coverage is None and evidence_quality is UNKNOWN.
+    2. Duplicate timestamps are identified and not counted as unique observations.
+    3. Invalid/unparseable timestamps are rejected and counted.
+    4. Intervals > max_gap_minutes (default 15.0m) are treated as unobserved dropouts.
+       Time is NOT accumulated as monitored duration across unobserved dropouts.
+    """
+    total_records = len(timestamps) if timestamps is not None else 0
+    valid_timestamps: List[datetime.datetime] = []
+    invalid_timestamp_count = 0
+    duplicate_count = 0
+    seen_timestamps = set()
+
+    if timestamps is not None:
+        for item in timestamps:
+            dt = parse_telemetry_timestamp(item)
+            if dt is None:
+                invalid_timestamp_count += 1
+                continue
+            if dt in seen_timestamps:
+                duplicate_count += 1
+                continue
+            seen_timestamps.add(dt)
+            valid_timestamps.append(dt)
+
+    valid_timestamps.sort()
+    valid_readings = len(valid_timestamps)
+
+    gap_count = 0
+    unobserved_gap_duration_min = 0.0
+    monitored_duration_min = 0.0
+
+    if valid_readings >= 2:
+        for i in range(1, valid_readings):
+            delta_min = (valid_timestamps[i] - valid_timestamps[i - 1]).total_seconds() / 60.0
+            if delta_min <= max_gap_minutes:
+                monitored_duration_min += delta_min
+            else:
+                gap_count += 1
+                unobserved_gap_duration_min += delta_min
+
+    # Check whether expected interval and observation window are known
+    has_known_baseline = (
+        expected_interval_min is not None
+        and expected_interval_min > 0
+        and observation_window_min is not None
+        and observation_window_min > 0
+    )
+
+    if not has_known_baseline:
+        return {
+            "evidence_quality": EvidenceQuality.UNKNOWN.value,
+            "telemetry_coverage_pct": None,
+            "monitored_duration_min": round(monitored_duration_min, 1),
+            "unobserved_gap_duration_min": round(unobserved_gap_duration_min, 1),
+            "gap_count": gap_count,
+            "total_records": total_records,
+            "valid_readings": valid_readings,
+            "duplicate_count": duplicate_count,
+            "invalid_timestamp_count": invalid_timestamp_count,
+            "observation_window_min": observation_window_min,
+            "expected_interval_min": expected_interval_min,
+            "expected_readings": None,
+            "quality_summary": "Expected sampling interval or observation window unknown; coverage cannot be mathematically established.",
+        }
+
+    # When expected interval and observation window are known:
+    expected_readings = max(1, int(round(observation_window_min / expected_interval_min)) + 1)
+    
+    # Calculate temporal coverage: ratio of actively monitored duration to observation window
+    coverage_pct = round(min(100.0, max(0.0, (monitored_duration_min / observation_window_min) * 100.0)), 1)
+
+    # Classify Evidence Quality state:
+    # Good: >= 90% coverage and no unobserved gaps (gap_count == 0 or unobserved_gap_duration_min == 0)
+    # Limited: 60% <= coverage < 90% OR (coverage >= 90% but with isolated gaps)
+    # Poor: coverage < 60% OR significant unobserved outage
+    if coverage_pct >= 90.0 and gap_count == 0:
+        quality_state = EvidenceQuality.GOOD.value
+        quality_summary = f"Continuous high-density telemetry ({coverage_pct}% coverage, 0 gaps) verifies monitoring throughout the {observation_window_min:.0f} min window."
+    elif coverage_pct >= 60.0 and unobserved_gap_duration_min <= (0.25 * observation_window_min):
+        quality_state = EvidenceQuality.LIMITED.value
+        quality_summary = f"Partial telemetry coverage ({coverage_pct}%). {gap_count} unobserved outage(s) totaling {unobserved_gap_duration_min:.1f} min detected."
+    else:
+        quality_state = EvidenceQuality.POOR.value
+        quality_summary = f"Poor telemetry coverage ({coverage_pct}%). Prolonged unobserved gap(s) totaling {unobserved_gap_duration_min:.1f} min leave substantial transit unmonitored."
+
+    return {
+        "evidence_quality": quality_state,
+        "telemetry_coverage_pct": coverage_pct,
+        "monitored_duration_min": round(monitored_duration_min, 1),
+        "unobserved_gap_duration_min": round(unobserved_gap_duration_min, 1),
+        "gap_count": gap_count,
+        "total_records": total_records,
+        "valid_readings": valid_readings,
+        "duplicate_count": duplicate_count,
+        "invalid_timestamp_count": invalid_timestamp_count,
+        "observation_window_min": round(observation_window_min, 1),
+        "expected_interval_min": round(expected_interval_min, 1),
+        "expected_readings": expected_readings,
+        "quality_summary": quality_summary,
+    }
+
+
+def generate_gap_aware_assessment(
+    observed_risk_info: Dict[str, Any],
+    telemetry_quality_info: Dict[str, Any],
+    observed_breach_duration_min: float = 0.0,
+    degree_hours_excursion: float = 0.0,
+) -> Dict[str, Any]:
+    """
+    Synthesizes observed temperature risk with telemetry evidence quality.
+    
+    CRITICAL SAFETY RULES:
+    1. A consignment with low observed risk but poor/limited evidence must NOT be presented
+       as low-risk without qualification.
+    2. Never make claims that a consignment is "safe" or "spoiled".
+    3. Clearly separate observed risk from evidence quality.
+    """
+    obs_cat = observed_risk_info.get("risk_category", "LOW").upper()
+    obs_score = float(observed_risk_info.get("risk_score", 0.0))
+    ev_quality = telemetry_quality_info.get("evidence_quality", EvidenceQuality.UNKNOWN.value)
+    coverage = telemetry_quality_info.get("telemetry_coverage_pct")
+    gap_count = int(telemetry_quality_info.get("gap_count", 0))
+    unobserved_gap_min = float(telemetry_quality_info.get("unobserved_gap_duration_min", 0.0))
+    window_min = telemetry_quality_info.get("observation_window_min")
+
+    # Determine Qualified Risk Label
+    if obs_cat == "LOW":
+        if ev_quality == EvidenceQuality.GOOD.value:
+            qualified_label = "Compliant (High Telemetry Confidence)"
+        elif ev_quality == EvidenceQuality.LIMITED.value:
+            qualified_label = "Low Observed Excursion (Qualified: Limited Telemetry)"
+        elif ev_quality == EvidenceQuality.POOR.value:
+            qualified_label = "Low Observed Excursion (Unverified — Poor Telemetry Coverage)"
+        else:
+            qualified_label = "Low Observed Excursion (Unverified — Unknown Sampling Rate)"
+    elif obs_cat == "MODERATE":
+        if ev_quality == EvidenceQuality.GOOD.value:
+            qualified_label = "Moderate Observed Risk (Verified Telemetry)"
+        elif ev_quality == EvidenceQuality.LIMITED.value:
+            qualified_label = "Moderate Observed Risk (Limited Coverage)"
+        elif ev_quality == EvidenceQuality.POOR.value:
+            qualified_label = "Moderate Observed Risk (Compounded by Poor Coverage)"
+        else:
+            qualified_label = "Moderate Observed Risk (Unknown Sampling Rate)"
+    else:  # HIGH or CRITICAL
+        severity = obs_cat.title()
+        if ev_quality == EvidenceQuality.GOOD.value:
+            qualified_label = f"{severity} Thermal Exposure (Verified Telemetry)"
+        elif ev_quality == EvidenceQuality.LIMITED.value:
+            qualified_label = f"{severity} Thermal Exposure (Limited Telemetry)"
+        elif ev_quality == EvidenceQuality.POOR.value:
+            qualified_label = f"{severity} Thermal Exposure (Compounded by Poor Coverage)"
+        else:
+            qualified_label = f"{severity} Thermal Exposure (Unknown Sampling Rate)"
+
+    # Construct Explanation based on actual data
+    exp_parts = []
+    if obs_cat == "LOW" and observed_breach_duration_min == 0.0:
+        exp_parts.append(f"Zero temperature breaches ({degree_hours_excursion:.2f} °C·h) were recorded during actively monitored intervals.")
+    else:
+        exp_parts.append(
+            f"Recorded {observed_breach_duration_min:.1f} minutes in active temperature excursion "
+            f"with {degree_hours_excursion:.3f} °C·h degree-hours during monitored intervals."
+        )
+
+    if coverage is not None and window_min is not None:
+        if gap_count > 0:
+            exp_parts.append(
+                f"Telemetry coverage is {coverage}% across the {window_min:.0f} minute window, "
+                f"with {gap_count} unobserved outage(s) exceeding 15 minutes totaling {unobserved_gap_min:.1f} minutes of missing telemetry."
+            )
+            exp_parts.append(
+                f"Conditions during the {unobserved_gap_min:.1f} minutes of missing data cannot be confirmed from sensor telemetry; "
+                "continuous compliance or excursion must not be inferred across unobserved blackouts."
+            )
+        else:
+            exp_parts.append(f"Continuous telemetry coverage was verified at {coverage}% with 0 unobserved sensor blackouts.")
+    else:
+        exp_parts.append("Telemetry sampling frequency or observation window was not specified; mathematical coverage percentage cannot be established.")
+
+    if obs_cat == "LOW" and ev_quality in [EvidenceQuality.POOR.value, EvidenceQuality.LIMITED.value]:
+        exp_parts.append(
+            "CRITICAL AUDIT NOTE: Although received telemetry shows low breach duration, "
+            f"the {ev_quality.lower()} telemetry coverage prevents confirming unbroken cold-chain compliance. "
+            "This consignment must not be treated as compliant without physical verification."
+        )
+
+    if obs_cat in ["HIGH", "CRITICAL"] and ev_quality in [EvidenceQuality.POOR.value, EvidenceQuality.LIMITED.value]:
+        exp_parts.append(
+            f"CRITICAL AUDIT NOTE: Significant thermal excursion is confirmed in monitored intervals, "
+            f"and an additional {unobserved_gap_min:.1f} minutes of missing data represents unassessed operational risk."
+        )
+
+    explanation = " ".join(exp_parts)
+
+    # Construct Actionable Recommendation based on real data
+    if ev_quality == EvidenceQuality.POOR.value:
+        if obs_cat in ["HIGH", "CRITICAL"]:
+            rec_action = (
+                f"Quarantine consignment immediately. Sustained thermal breach ({observed_breach_duration_min:.1f} min) "
+                f"is compounded by {unobserved_gap_min:.1f} min of missing telemetry. Extract physical data logger memory "
+                "and conduct mandatory lot quality evaluation."
+            )
+        else:
+            rec_action = (
+                f"Quarantine consignment for physical audit. Do not release inventory based solely on low observed readings; "
+                f"extract internal hardware data logger to verify conditions during the {unobserved_gap_min:.1f} min unobserved outage. "
+                "Inspect telematics gateway."
+            )
+    elif ev_quality == EvidenceQuality.LIMITED.value:
+        if obs_cat in ["HIGH", "CRITICAL"]:
+            rec_action = (
+                f"Quarantine consignment. Confirmed thermal excursion ({observed_breach_duration_min:.1f} min, {degree_hours_excursion:.2f} °C·h). "
+                "Inspect product lot and cross-reference vehicle refrigeration event logs."
+            )
+        else:
+            rec_action = (
+                f"Secondary receiving inspection required. Inspect auxiliary temperature indicator strip or download internal logger "
+                f"to verify thermal integrity across the {unobserved_gap_min:.1f} min unobserved gap prior to inventory disposition."
+            )
+    elif ev_quality == EvidenceQuality.GOOD.value:
+        if obs_cat in ["HIGH", "CRITICAL"]:
+            rec_action = (
+                f"Quarantine consignment. Continuous high-confidence telemetry confirms severe thermal excursion "
+                f"({observed_breach_duration_min:.1f} min, {degree_hours_excursion:.2f} °C·h). Notify logistics provider of cold-chain failure."
+            )
+        elif obs_cat == "MODERATE":
+            rec_action = (
+                f"Standard receiving inspection with thermal check. Minor transient excursions ({observed_breach_duration_min:.1f} min) "
+                "logged; verify receiving core temperature."
+            )
+        else:
+            rec_action = (
+                "Clear for standard receiving protocol. High-density continuous telemetry confirms temperature setpoint adherence across transit."
+            )
+    else:  # UNKNOWN
+        if obs_cat in ["HIGH", "CRITICAL"]:
+            rec_action = (
+                f"Quarantine consignment due to high observed thermal breach ({observed_breach_duration_min:.1f} min). "
+                "Verify logger configuration and conduct physical QA assay."
+            )
+        else:
+            rec_action = (
+                "Cross-reference physical temperature datalogger and establish configured sampling interval in manifest before final disposition."
+            )
+
+    return {
+        "observed_risk_score": obs_score,
+        "observed_risk_category": obs_cat,
+        "evidence_quality": ev_quality,
+        "telemetry_coverage_pct": coverage,
+        "gap_count": gap_count,
+        "unobserved_gap_duration_min": unobserved_gap_min,
+        "qualified_risk_label": qualified_label,
+        "explanation": explanation,
+        "recommended_action": rec_action,
+    }
+
+
+def calculate_gap_aware_risk(
+    timestamps: Union[List[Any], pd.Series, np.ndarray],
+    observed_breach_duration_min: float,
+    degree_hours_excursion: float,
+    door_open_count: int,
+    total_readings: int,
+    sampling_integrity_pct: float,
+    expected_interval_min: Optional[float] = None,
+    observation_window_min: Optional[float] = None,
+    total_duration_min: Optional[float] = None,
+    max_gap_minutes: float = MAX_GAP_MINUTES,
+) -> Dict[str, Any]:
+    """
+    Convenience function that calculates both the observed risk score and the telemetry
+    evidence quality, returning an integrated gap-aware risk assessment.
+    """
+    eff_window = observation_window_min if (observation_window_min and observation_window_min > 0) else total_duration_min
+    if eff_window is None or eff_window <= 0:
+        eff_window = max(30.0, float(total_readings) * 5.0)
+
+    obs_risk = calculate_risk_score(
+        breach_duration_min=observed_breach_duration_min,
+        total_duration_min=eff_window,
+        degree_hours=degree_hours_excursion,
+        door_open_count=door_open_count,
+        total_readings=total_readings,
+        sampling_integrity_pct=sampling_integrity_pct,
+    )
+
+    quality_info = assess_telemetry_quality(
+        timestamps=timestamps,
+        expected_interval_min=expected_interval_min,
+        observation_window_min=observation_window_min,
+        max_gap_minutes=max_gap_minutes,
+    )
+
+    assessment = generate_gap_aware_assessment(
+        observed_risk_info=obs_risk,
+        telemetry_quality_info=quality_info,
+        observed_breach_duration_min=observed_breach_duration_min,
+        degree_hours_excursion=degree_hours_excursion,
+    )
+
+    result = {**obs_risk, **quality_info, **assessment}
+    return result
+
+
 def enrich_summary_dataframe(
     summary_df: pd.DataFrame,
     raw_df: Optional[pd.DataFrame] = None,
+    expected_interval_min: Optional[float] = None,
 ) -> pd.DataFrame:
     """
     Enriches the MapReduce output summary DataFrame with risk scores,
-    duration estimates, risk classifications, and optional MKT if raw data is provided.
+    duration estimates, risk classifications, optional MKT, and Gap-Aware
+    evidence quality metrics if raw data is provided.
     """
     df = summary_df.copy()
 
-    # Pre-calculate MKT per delivery if raw telemetry is passed
+    # Pre-calculate MKT and timestamps per delivery if raw telemetry is passed
     mkt_map = {}
+    timestamps_map = {}
     if raw_df is not None and not raw_df.empty:
         for delivery_id, group in raw_df.groupby("delivery_id"):
             mkt_val = calculate_mkt(group["container_temp"].values)
             mkt_map[delivery_id] = mkt_val
+            timestamps_map[delivery_id] = group["timestamp"].tolist()
 
     risk_scores = []
     risk_categories = []
     risk_colors = []
     mkt_list = []
+    evidence_qualities = []
+    coverage_pcts = []
+    qualified_labels = []
+    gap_explanations = []
+    recommended_actions = []
 
     for _, row in df.iterrows():
+        deliv_id = row["delivery_id"]
         # Estimate total trip duration from valid readings (nominal 5m interval)
         total_trip_min = max(30.0, float(row["valid_readings"]) * 5.0)
 
@@ -175,16 +541,49 @@ def enrich_summary_dataframe(
             sampling_integrity_pct=float(row["sampling_integrity_pct"]),
         )
 
+        deliv_timestamps = timestamps_map.get(deliv_id, [])
+        window_min = None
+        if deliv_timestamps and expected_interval_min is not None and expected_interval_min > 0:
+            first_dt = parse_telemetry_timestamp(deliv_timestamps[0])
+            last_dt = parse_telemetry_timestamp(deliv_timestamps[-1])
+            if first_dt and last_dt:
+                window_min = max((last_dt - first_dt).total_seconds() / 60.0, total_trip_min)
+
+        quality_info = assess_telemetry_quality(
+            timestamps=deliv_timestamps,
+            expected_interval_min=expected_interval_min,
+            observation_window_min=window_min,
+            max_gap_minutes=MAX_GAP_MINUTES,
+        )
+
+        assessment = generate_gap_aware_assessment(
+            observed_risk_info=risk_info,
+            telemetry_quality_info=quality_info,
+            observed_breach_duration_min=float(row["observed_breach_duration_min"]),
+            degree_hours_excursion=float(row["degree_hours_excursion"]),
+        )
+
         risk_scores.append(risk_info["risk_score"])
         risk_categories.append(risk_info["risk_category"])
         risk_colors.append(risk_info["color"])
-        mkt_list.append(mkt_map.get(row["delivery_id"], None))
+        mkt_list.append(mkt_map.get(deliv_id, None))
+        evidence_qualities.append(assessment["evidence_quality"])
+        coverage_pcts.append(assessment["telemetry_coverage_pct"])
+        qualified_labels.append(assessment["qualified_risk_label"])
+        gap_explanations.append(assessment["explanation"])
+        recommended_actions.append(assessment["recommended_action"])
 
     df["risk_score"] = risk_scores
     df["risk_category"] = risk_categories
     df["risk_color"] = risk_colors
     if mkt_map:
         df["mean_kinetic_temp"] = mkt_list
+
+    df["evidence_quality"] = evidence_qualities
+    df["telemetry_coverage_pct"] = coverage_pcts
+    df["qualified_risk_label"] = qualified_labels
+    df["gap_explanation"] = gap_explanations
+    df["recommended_action"] = recommended_actions
 
     return df
 
