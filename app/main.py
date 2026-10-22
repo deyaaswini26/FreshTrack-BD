@@ -255,9 +255,9 @@ def main():
         k1, k2, k3, k4, k5 = st.columns(5)
         with k1:
             render_kpi_card(
-                title="Compliance Rate",
+                title="Reading Compliance",
                 value=f"{compliance_pct}%",
-                caption=f"{total_valid_readings - total_breach_readings:,} of {total_valid_readings:,} readings valid",
+                caption=f"{total_valid_readings - total_breach_readings:,} of {total_valid_readings:,} sensor readings compliant",
                 icon_name="check_circle",
                 accent_color="#4ADE80" if compliance_pct >= 75 else "#F87171",
             )
@@ -279,9 +279,9 @@ def main():
             )
         with k4:
             render_kpi_card(
-                title="Thermal Excursions",
+                title="Excursion Readings",
                 value=f"{total_breach_readings:,}",
-                caption=f"Out-of-setpoint sensor readings",
+                caption=f"Out-of-setpoint sensor observations",
                 icon_name="thermometer",
                 accent_color="#FBBF24" if total_breach_readings > 0 else "#4ADE80",
             )
