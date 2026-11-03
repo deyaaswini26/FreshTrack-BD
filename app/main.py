@@ -914,7 +914,7 @@ def main():
         last_meta = st.session_state["last_run_meta"]
 
         with p_col1:
-            st.markdown(\"### Pipeline Execution Telemetry\")
+            st.markdown("### Pipeline Execution Telemetry")
             # st.html() bypasses Markdown indented-code-block processing
             def _row(label, value_html):
                 return (
