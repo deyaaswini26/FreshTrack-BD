@@ -5,9 +5,9 @@
 [![Platform: macOS ARM64](https://img.shields.io/badge/Platform-macOS%20ARM64-blue.svg)](https://apple.com)
 [![Python: 3.12](https://img.shields.io/badge/Python-3.12-green.svg)](https://python.org)
 [![Hadoop: MapReduce Streaming](https://img.shields.io/badge/Hadoop-MapReduce%20Streaming-orange.svg)](https://hadoop.apache.org)
-[![Dashboard: Streamlit Enterprise](https://img.shields.io/badge/Dashboard-Streamlit%20Enterprise-red.svg)](https://streamlit.io)
-[![Visualization: Plotly Industrial](https://img.shields.io/badge/Visualization-Plotly%20Dark-teal.svg)](https://plotly.com)
-[![Unit Tests: 16 Passing](https://img.shields.io/badge/Unit%20Tests-16%2F16%20Passing-brightgreen.svg)](tests/)
+[![Dashboard: Streamlit Enterprise](https://img.shields.io/badge/Dashboard-Streamlit%20Clean%20Light-red.svg)](https://streamlit.io)
+[![Visualization: Plotly Clean Light](https://img.shields.io/badge/Visualization-Plotly%20Clean%20Light-teal.svg)](https://plotly.com)
+[![Unit Tests: 23 Passing](https://img.shields.io/badge/Unit%20Tests-23%2F23%20Passing-brightgreen.svg)](tests/)
 
 ---
 
@@ -24,7 +24,7 @@ Refrigerated food distribution ("cold-chain logistics") requires continuous temp
 2. **Timestamp-Aware Telemetry Cleansing:** Ensure mathematically sound handling of out-of-order records, duplicate timestamps, and unobserved sensor outages.
 3. **Scientific Thermal Quantification:** Compute Arrhenius-weighted **Mean Kinetic Temperature (MKT)** and cumulative degree-hours to quantify real thermal degradation beyond arithmetic averages.
 4. **Logistics Risk Triage:** Aggregate delivery metrics into corridor-level and facility-level risk indexes to identify chronically vulnerable transport routes and storage hubs.
-5. **Operational Control Tower:** Provide an enterprise-grade dark-themed industrial dashboard for logistics managers and compliance auditors.
+5. **Operational Control Tower:** Provide an enterprise-grade clean light dashboard and operational control tower for logistics managers and compliance auditors.
 
 ---
 
@@ -62,12 +62,12 @@ FreshTrack BD separates distributed stream processing from analytics presentatio
     - Data-driven operational findings & alerts
               │
               ▼
-    [app/main.py (5-View Enterprise Dashboard)]
-    ├── Overview (Fleet KPIs & High-Risk Triage)
-    ├── Route & Facility Analytics (Corridor Heatmaps)
-    ├── Shipment Deep Dive (High-Resolution Traces & Gap Outages)
-    ├── MapReduce Engine (Pipeline Transparency & Diagnostics)
-    └── Data Explorer (Raw Telemetry Queries & CSV Export)
+    [app/main.py (5-View Clean Dashboard)]
+    ├── 1. Home (Operations Overview & Attention Triage)
+    ├── 2. Shipments (Shipment Investigation, Temperature Traces & MKT)
+    ├── 3. Routes & Warehouses (Transit Corridors & Facility Performance)
+    ├── 4. Data Quality (Telemetry Health, Sensor Gaps & Data Explorer)
+    └── 5. Technical Details (MapReduce Engine, Cluster Status & Mathematical Reference)
 ```
 
 ### Transparent Dual-Mode Execution
@@ -86,8 +86,8 @@ FreshTrack BD enforces absolute execution truthfulness:
 | **Python 3.12** | Core language for MapReduce streaming scripts, analytics engine, and synthetic data generation. |
 | **Apache Hadoop Streaming** | Distributed processing protocol standard; scripts adhere strictly to `sys.stdin` $\to$ `sys.stdout` tab-delimited streams. |
 | **POSIX Standard Streams** | Local streaming orchestration via Unix pipes (`cat \| mapper \| sort \| reducer`) matching Hadoop streaming behavior. |
-| **Streamlit 1.30+** | Multi-page enterprise presentation layer and interactive operator interface. |
-| **Plotly Dark Industrial** | Interactive data visualization (dual-axis excursion trends, risk distributions, route heatmaps, and telemetry traces). |
+| **Streamlit 1.30+** | Multi-page clean light presentation layer and interactive operator interface. |
+| **Plotly Clean Light** | Interactive data visualization (dual-axis excursion trends, risk distributions, route heatmaps, and telemetry traces). |
 | **NumPy & Pandas** | Vectorized mathematical computation (Arrhenius exponential terms, matrix aggregations, and parity verification). |
 
 ---
@@ -186,25 +186,25 @@ $$\text{Risk Score} = S_{\text{duration}} (40\%) + S_{\text{magnitude}} (35\%) +
 
 ## 7. Verification & Visual Gallery
 
-### Page 1: Operations Overview
+### Page 1: Home (Operations Overview & Attention Triage)
 ![Overview Control Tower](docs/screenshots/p1_overview.png)
 *Fleet-wide reading compliance, monitored shipment counts, high-risk flags, degree-hours total, dual-axis excursion trends, and automated operational alerts.*
 
-### Page 2: Route & Facility Analytics
-![Route and Facility Analytics](docs/screenshots/p2_routes_facilities.png)
-*Transport corridor vulnerability rankings, route-commodity risk matrix heatmap, diurnal excursion frequency, and storage hub loading dock assessments.*
-
-### Page 3: Shipment Deep Dive
+### Page 2: Shipments (Investigation & Trace)
 ![Shipment Deep Dive](docs/screenshots/p3_shipment_deepdive.png)
 *High-resolution sensor telemetry curve with safe storage band, ambient stress curve, excursion markers, distinct unmonitored gap callouts, and Arrhenius MKT.*
 
-### Page 4: MapReduce Engine
-![MapReduce Engine](docs/screenshots/p4_mapreduce_engine.png)
-*Transparent 7-stage distributed pipeline architecture, live execution metrics, truthful execution mode badges, and intermediate stdout/stderr inspection.*
+### Page 3: Routes & Warehouses (Corridor & Facility Performance)
+![Route and Facility Analytics](docs/screenshots/p2_routes_facilities.png)
+*Transport corridor vulnerability rankings, route-commodity risk matrix heatmap, diurnal excursion frequency, and storage hub loading dock assessments.*
 
-### Page 5: Data Explorer
+### Page 4: Data Quality (Telemetry Health & Explorer)
 ![Data Explorer](docs/screenshots/p5_data_explorer.png)
 *Raw telemetry grid, data quality counters, 14-column schema dictionary, and CSV export capabilities.*
+
+### Page 5: Technical Details (MapReduce Engine & Math)
+![MapReduce Engine](docs/screenshots/p4_mapreduce_engine.png)
+*Transparent 7-stage distributed pipeline architecture, live execution metrics, truthful execution mode badges, and intermediate stdout/stderr inspection.*
 
 ---
 
@@ -236,7 +236,7 @@ pip install -r requirements.txt
 ```bash
 python3 -m unittest discover tests/ -v
 ```
-*(All 16 unit tests should complete in under 0.5s).*
+*(All 23 unit tests should complete in under 0.5s).*
 
 ### Step 5: Launch Dashboard
 ```bash

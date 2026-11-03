@@ -35,29 +35,29 @@
 |  [x] Architecture specification with stable schemas (architecture.md)         |
 |  [x] Scaffolding (.gitignore, requirements.txt, folder layout)                 |
 +--------------------------------------------------------------------------------+
-| SPRINT 2 (Hours 6 - 12): SYNTHETIC DATA & STREAMING MAPREDUCE CORE (IN PROGRESS)|
-|  [ ] IoT Cold-Chain Data Generator (src/data_generator.py)                    |
+| SPRINT 2 (Hours 6 - 12): SYNTHETIC DATA & STREAMING MAPREDUCE CORE (COMPLETED) |
+|  [x] IoT Cold-Chain Data Generator (src/data_generator.py)                    |
 |      - Supports multi-product profiles, routes, ambient heatwaves, door events|
 |      - Injects edge cases: gaps, duplicate timestamps, irregular frequencies  |
-|  [ ] Pre-generated sample CSV (data/sample/cold_chain_sample.csv)              |
-|  [ ] Hadoop Streaming Mapper (hadoop/mapper.py)                               |
-|  [ ] Timestamp-Aware Hadoop Streaming Reducer (hadoop/reducer.py)              |
-|  [ ] Local Streaming Unix Runner (hadoop/run_local_streaming.sh)                |
-|  [ ] Hadoop Manager with dynamic environment probing (src/hadoop_manager.py)   |
-|  [ ] Comprehensive parity test suite vs Pandas reference (tests/)              |
+|  [x] Pre-generated sample CSV (data/sample/cold_chain_sample.csv)              |
+|  [x] Hadoop Streaming Mapper (hadoop/mapper.py)                               |
+|  [x] Timestamp-Aware Hadoop Streaming Reducer (hadoop/reducer.py)              |
+|  [x] Local Streaming Unix Runner (hadoop/run_local_streaming.sh)                |
+|  [x] Hadoop Manager with dynamic environment probing (src/hadoop_manager.py)   |
+|  [x] Comprehensive parity test suite vs Pandas reference (tests/)              |
 +--------------------------------------------------------------------------------+
-| SPRINT 3 (Hours 12 - 18): ANALYTICS ENGINE & STREAMLIT DASHBOARD               |
-|  [ ] Analytics library (src/analytics.py): MKT, CDHE, Risk Index              |
-|  [ ] Streamlit multi-view layout (app/main.py):                               |
+| SPRINT 3 (Hours 12 - 18): ANALYTICS ENGINE & STREAMLIT DASHBOARD (COMPLETED)   |
+|  [x] Analytics library (src/analytics.py): MKT, CDHE, Risk Index              |
+|  [x] Streamlit multi-view layout (app/main.py):                               |
 |      - Persistent execution mode badge (REAL_HADOOP vs LOCAL_STREAMING)       |
 |      - Executive KPI Cards (compliance rate, total deliveries, breaches)       |
 |      - Route & Warehouse Risk Summary                                         |
 |      - Excursion Deep-Dive (Container vs Target thresholds)                   |
 +--------------------------------------------------------------------------------+
-| SPRINT 4 (Hours 18 - 24): DEMO PACKAGING & EXPO PREPARATION                   |
-|  [ ] Verification of 100% offline startup from data/sample                     |
-|  [ ] Expo presentation cheat-sheet & talking points                            |
-|  [ ] Final test verification & documentation sign-off                          |
+| SPRINT 4 (Hours 18 - 24): DEMO PACKAGING & EXPO PREPARATION (COMPLETED)       |
+|  [x] Verification of 100% offline startup from data/sample                     |
+|  [x] Expo presentation cheat-sheet & talking points                            |
+|  [x] Final test verification & documentation sign-off                          |
 +--------------------------------------------------------------------------------+
 ```
 
@@ -65,5 +65,5 @@
 
 ## 3. Immediate Action Items (Step 1 & Step 2)
 
-- [ ] **Step 1**: Implement `src/data_generator.py` and output `data/sample/cold_chain_sample.csv` (1,000+ realistic records across 10+ deliveries, containing normal conditions, cooling breaches, sensor disconnects/gaps, and duplicate timestamps).
-- [ ] **Step 2**: Implement `hadoop/mapper.py`, `hadoop/reducer.py`, `hadoop/run_local_streaming.sh`, `src/hadoop_manager.py`, and `tests/test_pipeline_parity.py`. Run tests and report exact results.
+- [x] **Step 1**: Implement `src/data_generator.py` and output `data/sample/cold_chain_sample.csv` (1,000+ realistic records across 10+ deliveries, containing normal conditions, cooling breaches, sensor disconnects/gaps, and duplicate timestamps).
+- [x] **Step 2**: Implement `hadoop/mapper.py`, `hadoop/reducer.py`, `hadoop/run_local_streaming.sh`, `src/hadoop_manager.py`, and `tests/test_pipeline_parity.py`. Run tests and report exact results.
