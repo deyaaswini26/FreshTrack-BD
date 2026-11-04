@@ -13,6 +13,7 @@ Pages:
 
 import datetime
 import os
+import platform
 import sys
 import textwrap
 from typing import Any, Dict, List, Optional, Tuple
@@ -116,14 +117,14 @@ def main():
             "mode_label": env_info["mode_description"],
             "is_real_hadoop": env_info["recommended_mode"] == ExecutionMode.REAL_HADOOP,
             "hadoop_job_id": "job_cluster_01" if env_info["recommended_mode"] == ExecutionMode.REAL_HADOOP else "N/A (Local Pipe Emulation)",
-            "duration_seconds": 0.029,
-            "start_time_iso": "2026-10-20 04:08:53 UTC",
-            "finish_time_iso": "2026-10-20 04:08:54 UTC",
-            "input_records": 1046,
-            "valid_records": 1045,
-            "rejected_records": 0,
-            "output_records": 20,
-            "status": "SUCCESS",
+            "duration_seconds": None,
+            "start_time_iso": None,
+            "finish_time_iso": None,
+            "input_records": None,
+            "valid_records": None,
+            "rejected_records": None,
+            "output_records": None,
+            "status": "READY",
         }
 
     # Session State & Query Param Initialization
@@ -237,7 +238,8 @@ def main():
         attention_count = len(needs_attention_df)
 
         # Average Telemetry Coverage
-        avg_coverage = round(float(summary_df["telemetry_coverage_pct"].dropna().mean()), 1) if "telemetry_coverage_pct" in summary_df.columns else 95.0
+        valid_cov_series = summary_df["telemetry_coverage_pct"].dropna() if "telemetry_coverage_pct" in summary_df.columns else pd.Series(dtype=float)
+        avg_coverage = round(float(valid_cov_series.mean()), 1) if not valid_cov_series.empty else None
 
         k1, k2, k3, k4 = st.columns(4)
         with k1:
@@ -265,12 +267,14 @@ def main():
                 accent_color="#DC2626" if attention_count > 0 else "#16A34A",
             )
         with k4:
+            cov_val_str = f"{avg_coverage}%" if avg_coverage is not None else "Unknown"
+            cov_cap_str = "Continuous coverage across transit windows" if avg_coverage is not None else "Sampling interval not specified in telemetry"
             render_kpi_card(
                 title="Average Sensor Reliability",
-                value=f"{avg_coverage}%",
-                caption=f"Continuous coverage across transit windows",
+                value=cov_val_str,
+                caption=cov_cap_str,
                 icon_name="shield_check",
-                accent_color="#0284C7",
+                accent_color="#0284C7" if avg_coverage is not None else "#64748B",
             )
 
         st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
@@ -402,7 +406,7 @@ def main():
         t_max = float(ship_raw["target_temp_max"].iloc[0])
         excursion_rate = round((ship_meta["breach_reading_count"] / max(1, ship_meta["valid_readings"])) * 100.0, 1)
         cov_pct = ship_meta.get("telemetry_coverage_pct")
-        cov_str = f"{cov_pct}%" if (cov_pct is not None and not pd.isna(cov_pct)) else "N/A"
+        cov_str = f"{cov_pct}%" if (cov_pct is not None and not pd.isna(cov_pct)) else "Unknown"
         ev_quality = ship_meta.get("evidence_quality", "Unknown")
 
         c1, c2, c3, c4 = st.columns(4)
@@ -921,16 +925,32 @@ def main():
                     f'<div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:0.88rem;">'
                     f'<span style="color:#64748B;">{label}</span>{value_html}</div>'
                 )
+
+            dur_val = last_meta.get("duration_seconds")
+            dur_html = f'<span style="color:#0F172A;font-weight:600;">{dur_val} seconds</span>' if dur_val is not None else '<span style="color:#64748B;font-style:italic;">Ready to run</span>'
+
+            inp_val = last_meta.get("input_records")
+            inp_html = f'<span style="color:#0F172A;font-weight:600;">{inp_val:,}</span>' if inp_val is not None else '<span style="color:#64748B;">--</span>'
+
+            val_val = last_meta.get("valid_records")
+            val_html = f'<span style="color:#10B981;font-weight:600;">{val_val:,}</span>' if val_val is not None else '<span style="color:#64748B;">--</span>'
+
+            rej_val = last_meta.get("rejected_records")
+            rej_html = f'<span style="color:#64748B;font-weight:600;">{rej_val}</span>' if rej_val is not None else '<span style="color:#64748B;">--</span>'
+
+            out_val = last_meta.get("output_records", len(summary_df))
+            out_html = f'<span style="color:#0D9488;font-weight:600;">{out_val}</span>'
+
             st.html(
                 '<div class="clean-panel">'
                 + f'<div style="display:flex;justify-content:space-between;margin-bottom:8px;">'
                   f'<span style="color:#64748B;font-size:0.88rem;">Execution Mode:</span>'
                   f'<span>{render_status_badge_html(last_meta["mode"])}</span></div>'
-                + _row("Input Records Ingested:", f'<span style="color:#0F172A;font-weight:600;">{last_meta.get("input_records", 1046):,}</span>')
-                + _row("Valid Records Emitted:", f'<span style="color:#10B981;font-weight:600;">{last_meta.get("valid_records", 1045):,}</span>')
-                + _row("Corrupted / Filtered:", f'<span style="color:#64748B;font-weight:600;">{last_meta.get("rejected_records", 0)}</span>')
-                + _row("Consignments Processed:", f'<span style="color:#0D9488;font-weight:600;">{last_meta.get("output_records", 20)}</span>')
-                + _row("Processing Runtime:", f'<span style="color:#0F172A;font-weight:600;">{last_meta.get("duration_seconds", 0.029)} seconds</span>')
+                + _row("Input Records Ingested:", inp_html)
+                + _row("Valid Records Emitted:", val_html)
+                + _row("Corrupted / Filtered:", rej_html)
+                + _row("Consignments Processed:", out_html)
+                + _row("Processing Runtime:", dur_html)
                 + _row("Hadoop Job Identifier:", f'<span style="color:#64748B;font-family:monospace;">{last_meta.get("hadoop_job_id", "N/A")}</span>')
                 + '</div>'
             )
@@ -946,7 +966,7 @@ def main():
 
             chosen_mode_label = st.radio(
                 "Select Execution Target:",
-                options=["Auto-Detect (Local Streaming Mode on macOS)", "Force Cluster Hadoop Job"],
+                options=["Auto-Detect (Local Streaming Mode)", "Force Cluster Hadoop Job"],
                 index=0,
             )
 
@@ -965,6 +985,30 @@ def main():
                         st.rerun()
                     except Exception as exc:
                         st.error(f"Execution Error: {exc}")
+
+        # Live MapReduce Stage Telemetry & Intermediate Stream Preview
+        if last_meta.get("mapper_sample"):
+            st.markdown("### Live MapReduce Data Stream Transparency")
+            st.caption("Inspect live intermediate output emitted between MapReduce pipeline stages during the most recent execution.")
+
+            s_col1, s_col2, s_col3 = st.columns(3)
+            with s_col1:
+                st.markdown("**1. Mapper Intermediate Output**")
+                st.caption("Format: `<delivery_id>\t<telemetry_values>` emitted to stdout:")
+                m_lines = "\n".join(last_meta["mapper_sample"][:8])
+                st.code(m_lines, language="text")
+
+            with s_col2:
+                st.markdown("**2. Shuffle & Sort Partition Stream**")
+                st.caption("Stream partitioned and sorted by delivery key before Reducer:")
+                s_lines = "\n".join(last_meta["sorted_sample"][:8])
+                st.code(s_lines, language="text")
+
+            with s_col3:
+                st.markdown("**3. Reducer Emitted Consignment Metrics**")
+                st.caption("Final timestamp-aware summary CSV lines emitted to stdout:")
+                r_lines = "\n".join(last_meta["reducer_sample"][:8])
+                st.code(r_lines, language="text")
 
         st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
 
@@ -1034,7 +1078,7 @@ def main():
 
         with st.expander("5. System Environment & Cluster Diagnostics", expanded=False):
             st.json({
-                "host_os": "macOS Darwin (ARM64 Apple Silicon)",
+                "host_os": f"{platform.system()} {platform.release()} ({platform.machine()})",
                 "python_runtime": f"Python {sys.version.split()[0]}",
                 "java_jdk_installed": env_info["has_java"],
                 "java_version": env_info["java_version"],

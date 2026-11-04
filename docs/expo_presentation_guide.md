@@ -112,7 +112,7 @@ Yes. Because `mapper.py` and `reducer.py` are stateless standard Unix pipe execu
 
 ### Q10: Why does the dashboard say `LOCAL_STREAMING` instead of `REAL_HADOOP`?
 **Answer:**
-We believe in absolute engineering integrity. Our development and expo demonstration environment runs on macOS Apple Silicon, which lacks native bare-metal Apache Hadoop YARN and HDFS daemons. Rather than fabricating a fake Hadoop cluster, inventing job IDs, or mocking daemons, our system dynamically detects the absence of `hadoop` in `$PATH` and accurately reports `LOCAL_STREAMING (Unix Pipe Emulation)`.
+We believe in absolute engineering integrity. Our development and expo demonstration environment runs locally without dedicated bare-metal Apache Hadoop YARN and HDFS daemons. Rather than fabricating a fake Hadoop cluster, inventing job IDs, or mocking daemons, our system dynamically detects the absence of `hadoop` in `$PATH` and accurately reports `LOCAL_STREAMING (Unix Pipe Emulation)`.
 
 ### Q11: Does a HIGH risk score mean the food is definitely spoiled or unsafe to eat?
 **Answer:**

@@ -2,7 +2,7 @@
 
 > *"Turning cold-chain telemetry into actionable logistics intelligence."*
 
-[![Platform: macOS ARM64](https://img.shields.io/badge/Platform-macOS%20ARM64-blue.svg)](https://apple.com)
+[![Platform: Cross-Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-blue.svg)](https://python.org)
 [![Python: 3.12](https://img.shields.io/badge/Python-3.12-green.svg)](https://python.org)
 [![Hadoop: MapReduce Streaming](https://img.shields.io/badge/Hadoop-MapReduce%20Streaming-orange.svg)](https://hadoop.apache.org)
 [![Dashboard: Streamlit Enterprise](https://img.shields.io/badge/Dashboard-Streamlit%20Clean%20Light-red.svg)](https://streamlit.io)
@@ -72,7 +72,7 @@ FreshTrack BD separates distributed stream processing from analytics presentatio
 
 ### Transparent Dual-Mode Execution
 FreshTrack BD enforces absolute execution truthfulness:
-- **`LOCAL_STREAMING` (Unix Pipe Emulation):** On local development environments (e.g., macOS Apple Silicon), the system streams records through `mapper.py`, `sort -k1,1`, and `reducer.py` using pure POSIX standard streams. The dashboard displays `● LOCAL_STREAMING` with `Hadoop Job ID: N/A (Local Pipe Emulation)`.
+- **`LOCAL_STREAMING` (Pipe Emulation):** On local single-machine demonstration environments without an active Hadoop YARN cluster, the system streams records through `mapper.py`, key partitioning/sorting, and `reducer.py` using standard streams. The dashboard displays `● LOCAL_STREAMING` with `Hadoop Job ID: N/A (Local Pipe Emulation)`.
 - **`REAL_HADOOP`:** When deployed to an authenticated Hadoop cluster with active YARN and HDFS daemons, the system submits jobs via `hadoop jar hadoop-streaming.jar`. 
 
 *The project never displays fabricated cluster daemons, fake job IDs, or simulated Hadoop execution.*
@@ -208,10 +208,10 @@ $$\text{Risk Score} = S_{\text{duration}} (40\%) + S_{\text{magnitude}} (35\%) +
 
 ---
 
-## 8. Installation & Quick Start (macOS)
+## 8. Installation & Quick Start
 
 ### Prerequisites
-- macOS Sonoma / Sequoia (Apple Silicon or Intel)
+- macOS, Linux, or Windows 10/11
 - Python 3.10+ (Python 3.12 recommended)
 - `pip` package manager
 
@@ -248,6 +248,6 @@ Open **http://localhost:8501** in your browser.
 
 ## 9. Known Limitations & Roadmap
 
-1. **Local Streaming vs. Cluster YARN:** On macOS environments without Docker or bare-metal Linux, the pipeline runs via POSIX streaming pipes. While execution scripts and mathematical results are 100% parity-verified against Hadoop Streaming, physical distributed node management requires an external Hadoop YARN cluster.
+1. **Local Streaming vs. Cluster YARN:** On local environments without Docker or a multi-node Linux cluster, the pipeline runs via streaming pipes. While execution scripts and mathematical results are 100% parity-verified against Hadoop Streaming, physical distributed node management requires an external Hadoop YARN cluster.
 2. **Standardized Activation Energy:** Arrhenius MKT currently defaults to the standard USP <1079> general value of $83.144\text{ kJ/mol}$. Future iterations can introduce commodity-specific activation energies (e.g., lipid oxidation vs. enzymatic browning).
 3. **Simulated Telemetry:** Sensor streams are generated with realistic physics-based noise and failure distributions. Production deployment would integrate Kafka or MQTT brokers connected to physical GPS/temperature dataloggers.
